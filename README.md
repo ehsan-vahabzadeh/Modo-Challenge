@@ -196,7 +196,7 @@ AI tools were used extensively to speed up implementation and iteration (includi
 
 Dashboard preview:
 
-![Dashboard screenshot](dashboard.png)
+![Dashboard screenshot](Dashboard.png)
 
 > If `docs/dashboard.png` is missing, launch the app locally and save a screenshot at that path.
 
