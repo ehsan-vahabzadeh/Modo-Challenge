@@ -1,0 +1,38 @@
+1. SETUP AN EMPTY REPO IN GITHUB CALLED SIMPLE GB BATTERY,
+
+2. STARTED AMP WITH THIS THREAD -> GET DATA WRAPPERS FOR SOLAR, WIND AND DEMAND FORECASTS
+This is a project in which I intend to build a basic battery with input parameters for the GB energy system.
+For this I will need to pull the data from BMRS. I need to pull the demand, wind, and solar generation data and the day ahead cleared prices.
+The base url for the bmrs website is bmrs.elexon.co.uk.
+Can you please write the code that pulls the wind, solar, and demand
+outturn data for a given date and wrap it up with a for loop that loops from the 90 days ago until today?
+Create a file called bmrs_data_wrapper.py and dump all this code in there.
+
+3. AMENDED THE CODE PRODUCED BY AMP TO CORRECT THE TOTAL WIND FORECAST (BY SUMMING UP THE WIND ONSHORE AND WIND OFFSHORE)
+
+4. AMP QUERY - ADD THE MARKET INDEX PRICE TO THE FUNDAMENTALS.
+In the bmrs_data_wrapper.py there is a function called bmrs_data_wrapper_main_function which is the main trigger point for the data pulling from bmrs.
+Inside this function there is a fetch day data function pulls the demand, wind and solar and it merges them together.
+Here i want to pull another dataset from bmrs which is the market index prices. The link for this bmrs.elexon.co.uk/market-index-prices.
+I want you to write the code that pull sthe market index prices and merges it to the df that is merged with wind solar and demand mws.
+
+5. AMP QUERY - ADD THE FUNDAMENTAL FORECASTS TO THE BMRS DATA WRAPPER
+So far we have collected the actuals for fundamentals. We want to pull the day ahead wind, solar, and demand forecasts from bmrs.
+in bmrs_data_wrapper.py create a new function called get_bmrs_day_ahead_forecasts and pull the solar, wind, and demand forecasts.
+
+6. AMP QUERY - CHARACTERISE THE HISTORIC ACTUAL DAY-AHEAD PRICES WITH HISTORIC OUTTURN RESIDUAL LOAD, and PLOT IT
+
+7. CALCULATED THE CURVEFITTED PRICE FROM THE FORECASTED RESIDUAL LOAD.
+
+8. AMP QUERY - WRITING A BATTERY OPTIMISER
+Okay so i want you to use pulp for the optimisation. the battery_module.py will have a function called optimise battery.
+it will take the curvefitted_price as input (48 values for every settlement period).
+the battery will be able to charge or discharge at 1 MW for every settlement period. i want the battery to have state of energy of 2 mwh.
+this means that it can charge for 4 settlement periods or discharge for 4 settlement periods. every settlement period is 30 minutes.
+
+9. AMP QUERY - ADDING A NEW CONSTRAINT FOR LIMITTING CYCLES
+
+okay now i want POWER_MW, CAPACITY_MWH to be inputs to the optimise battery module. I also want to apply an additional constraint which is the
+cumulative sum of charge to be less than equal to input cycle multiplied with POWER_MW and cummulative sum of discharge to be less than or equal
+ to the input cycle multipled with POWER_MW. So if I have inputted 2 for a 1 MW battery, this means that i can have 4 charge values (in 48 settlement
+ periods where each one is 30 minutes) with 1 MW values, and I can have 4 discharge values with similar logic.
