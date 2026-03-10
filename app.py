@@ -4,60 +4,175 @@ import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from battery_optimiser import optimise_battery
-from bmrs_data_wrapper import (
-    calculate_day_ahead_residual_load_forecast,
-    get_historic_actual_residual_load_and_day_ahead_prices,
+# ------------------------------------------------------------
+# Page setup
+# ------------------------------------------------------------
+st.set_page_config(
+    page_title="Battery Dispatch Dashboard",
+    page_icon="🔋",
+    layout="wide"
 )
 
-st.set_page_config(page_title="Battery Dispatch Dashboard", page_icon="🔋", layout="wide")
+st.title("🔋 Battery Dispatch Dashboard")
+st.markdown("Synthetic Streamlit demo for battery charging/discharging, state of energy, regression, and price forecast.")
 
-LOOKBACK_OPTIONS = [7, 14, 30, 60]
-lookback_days = 30
-# POLY_DEGREE_OPTIONS = [1, 2, 3, 4]
-poly_degree = 3
-POWER_OPTIONS_MW = [0.5, 1.0, 2.0, 4.0]
-CAPACITY_OPTIONS_MWH = [0.5, 1.0, 2.0, 4.0, 8.0]
-CYCLE_OPTIONS = [1, 2, 3]
+# ------------------------------------------------------------
+# Constants
+# ------------------------------------------------------------
+DURATION_OPTIONS = {
+    "30 minutes": 0.5,
+    "1 hour": 1.0,
+    "2 hours": 2.0,
+    "4 hours": 4.0,
+    "8 hours": 8.0
+}
 
-
-def fit_price_curve(df: pd.DataFrame, degree: int) -> tuple[np.ndarray, float]:
-    """Fit polynomial curve of market index price versus residual load."""
-    x = df["residual_load_MW"].to_numpy(dtype=float)
-    y = df["market_index_price"].to_numpy(dtype=float)
-    valid = np.isfinite(x) & np.isfinite(y)
-    x = x[valid]
-    y = y[valid]
-
-    coeffs = np.polyfit(x, y, degree)
-    y_hat = np.polyval(coeffs, x)
-    r_squared = 1 - np.sum((y - y_hat) ** 2) / np.sum((y - np.mean(y)) ** 2)
-    return coeffs, float(r_squared)
+BASE_SETTLEMENT_HOURS = 0.5
+N_BASE_PERIODS = 48
+BATTERY_POWER_MW = 1.0          # assumed fixed rated power
+ROUND_TRIP_EFFICIENCY = 0.90    # fake but reasonable
+CHARGE_EFF = np.sqrt(ROUND_TRIP_EFFICIENCY)
+DISCHARGE_EFF = np.sqrt(ROUND_TRIP_EFFICIENCY)
 
 
-@st.cache_data(show_spinner=True)
-def build_input_data(lookback_days: int, polynomial_degree: int):
-    """Load historical actuals, fit price curve, and build day-ahead forecasts."""
-    historical = get_historic_actual_residual_load_and_day_ahead_prices(lookback_days)
-    coeffs, r_squared = fit_price_curve(historical, polynomial_degree)
+# ------------------------------------------------------------
+# Fake base data
+# ------------------------------------------------------------
+@st.cache_data
+def make_base_market_dataframe():
+    """
+    Creates a fake 48-settlement-period dataframe for one day.
+    Columns:
+      - settlement_period
+      - timestamp
+      - price_forecast
+      - residual_load
+    """
+    np.random.seed(42)
 
-    today_str = pd.Timestamp.today().normalize().strftime("%Y-%m-%d")
-    forecast = calculate_day_ahead_residual_load_forecast(today_str)
-    forecast["curvefitted_price"] = np.polyval(coeffs, forecast["residual_load_forecast_MW"])
-    return historical, forecast, coeffs, r_squared
+    timestamps = pd.date_range("2026-03-10 00:00:00", periods=N_BASE_PERIODS, freq="30min")
+    sp = np.arange(1, N_BASE_PERIODS + 1)
 
-
-def build_dispatch(prices: list[float], power_mw: float, capacity_mwh: float, cycles: float) -> pd.DataFrame:
-    dispatch = optimise_battery(
-        prices=prices,
-        power_mw=power_mw,
-        capacity_mwh=capacity_mwh,
-        cycles=cycles,
+    # synthetic residual load shape
+    residual_load = (
+        25000
+        + 3500 * np.sin(np.linspace(-1.2, 2.4 * np.pi - 1.2, N_BASE_PERIODS))
+        + 1200 * np.sin(np.linspace(0, 6 * np.pi, N_BASE_PERIODS))
+        + np.random.normal(0, 450, N_BASE_PERIODS)
     )
-    dispatch["cumulative_revenue"] = dispatch["revenue"].cumsum()
-    return dispatch
+
+    # synthetic price related to residual load
+    price_forecast = (
+        55
+        + 0.0032 * (residual_load - residual_load.mean())
+        + 10 * np.sin(np.linspace(0, 2 * np.pi, N_BASE_PERIODS) + 0.6)
+        + np.random.normal(0, 2.5, N_BASE_PERIODS)
+    )
+
+    df = pd.DataFrame({
+        "settlement_period": sp,
+        "timestamp": timestamps,
+        "price_forecast": price_forecast,
+        "residual_load": residual_load
+    })
+
+    return df
 
 
+@st.cache_data
+def make_scatter_dataframe():
+    """
+    Fake dataframe for scatter/regression plot.
+    Example relationship: daily spread vs revenue
+    """
+    np.random.seed(7)
+
+    x = np.linspace(15, 120, 35)
+    y = 0.82 * x + 8 + np.random.normal(0, 10, len(x))
+
+    return pd.DataFrame({
+        "x_metric": x,
+        "y_metric": y
+    })
+
+
+# ------------------------------------------------------------
+# Battery dispatch builder
+# ------------------------------------------------------------
+def build_dispatch_dataframe(base_df: pd.DataFrame, duration_h: float) -> pd.DataFrame:
+    """
+    Build charging/discharging and SOE profile for a chosen battery duration.
+
+    Assumptions:
+      - base data are 48 half-hour periods
+      - periods are aggregated according to duration
+      - battery power is fixed at BATTERY_POWER_MW
+      - energy capacity = BATTERY_POWER_MW * duration_h
+      - simple heuristic:
+          charge in cheapest blocks
+          discharge in most expensive blocks
+          idle elsewhere
+    """
+    block_size = int(duration_h / BASE_SETTLEMENT_HOURS)  # 1,2,4,8,16
+    n_blocks = N_BASE_PERIODS // block_size
+
+    df = base_df.copy()
+    df["block"] = np.repeat(np.arange(1, n_blocks + 1), block_size)
+
+    agg = (
+        df.groupby("block", as_index=False)
+        .agg(
+            timestamp=("timestamp", "first"),
+            price_forecast=("price_forecast", "mean"),
+            residual_load=("residual_load", "mean")
+        )
+    )
+
+    # Decide dispatch based on price ranking
+    n_charge = max(1, n_blocks // 3)
+    n_discharge = max(1, n_blocks // 3)
+
+    sorted_idx = agg["price_forecast"].sort_values().index
+    charge_idx = sorted_idx[:n_charge]
+    discharge_idx = sorted_idx[-n_discharge:]
+
+    agg["dispatch_mwh"] = 0.0
+
+    # energy moved in each aggregated block = power * duration
+    block_energy = BATTERY_POWER_MW * duration_h
+
+    agg.loc[charge_idx, "dispatch_mwh"] = -block_energy   # charging
+    agg.loc[discharge_idx, "dispatch_mwh"] = block_energy # discharging
+
+    # Battery capacity
+    energy_capacity_mwh = BATTERY_POWER_MW * duration_h
+    soe = 0.5 * energy_capacity_mwh  # initial SOE at 50%
+
+    soe_list = []
+    for dispatch in agg["dispatch_mwh"]:
+        if dispatch < 0:
+            # charging
+            energy_in = -dispatch
+            soe += energy_in * CHARGE_EFF
+        elif dispatch > 0:
+            # discharging
+            energy_out = dispatch
+            soe -= energy_out / DISCHARGE_EFF
+
+        soe = np.clip(soe, 0, energy_capacity_mwh)
+        soe_list.append(soe)
+
+    agg["soe_mwh"] = soe_list
+    agg["period_label"] = np.arange(1, len(agg) + 1)
+    agg["duration_h"] = duration_h
+    agg["energy_capacity_mwh"] = energy_capacity_mwh
+
+    return agg
+
+
+# ------------------------------------------------------------
+# Plot functions
+# ------------------------------------------------------------
 def plot_charge_discharge(dispatch_df: pd.DataFrame) -> go.Figure:
     fig = go.Figure()
     fig.add_bar(
@@ -144,35 +259,35 @@ def plot_historic_scatter_with_fit(historical_df: pd.DataFrame, coeffs: np.ndarr
     return fig
 
 
-st.title("🔋 GB Battery Dispatch Dashboard")
-st.markdown(
-    "Interactive view of BMRS-based curve-fitted prices and battery optimization. "
-    "Choose **power (MW)**, **capacity (MWh)**, and **cycles** in the sidebar."
+# ------------------------------------------------------------
+# Data creation
+# ------------------------------------------------------------
+base_market_df = make_base_market_dataframe()
+scatter_df = make_scatter_dataframe()
+
+# ------------------------------------------------------------
+# Sidebar controls
+# ------------------------------------------------------------
+st.sidebar.header("Controls")
+
+duration_label = st.sidebar.selectbox(
+    "Battery duration",
+    list(DURATION_OPTIONS.keys()),
+    index=1
 )
 
-st.sidebar.header("Model Inputs")
-# lookback_days = st.sidebar.selectbox("Historic lookback window (days)", LOOKBACK_OPTIONS, index=2)
-# poly_degree = st.sidebar.selectbox("Polynomial degree", POLY_DEGREE_OPTIONS, index=2)
-power_mw = st.sidebar.selectbox("Battery power (MW)", POWER_OPTIONS_MW, index=1)
-capacity_mwh = st.sidebar.selectbox("Battery capacity (MWh)", CAPACITY_OPTIONS_MWH, index=2)
-cycles = st.sidebar.selectbox("Max cycles", CYCLE_OPTIONS, index=1)
+duration_h = DURATION_OPTIONS[duration_label]
+dispatch_df = build_dispatch_dataframe(base_market_df, duration_h)
 
-if capacity_mwh < power_mw * 0.5:
-    st.sidebar.warning("Capacity is very small relative to power for 30-minute settlement periods.")
+st.sidebar.markdown("### Assumptions")
+st.sidebar.write(f"- Rated power: {BATTERY_POWER_MW:.1f} MW")
+st.sidebar.write(f"- Duration: {duration_h:.1f} h")
+st.sidebar.write(f"- Energy capacity: {BATTERY_POWER_MW * duration_h:.1f} MWh")
+st.sidebar.write(f"- Number of settlement points shown: {len(dispatch_df)}")
 
-try:
-    historical_df, forecast_df, coeffs, r_squared = build_input_data(lookback_days, poly_degree)
-except Exception as exc:
-    st.error(f"Data preparation failed: {exc}")
-    st.stop()
-
-if forecast_df.empty:
-    st.warning("Forecast dataset is empty; cannot run optimizer.")
-    st.stop()
-
-prices = forecast_df["curvefitted_price"].astype(float).tolist()
-dispatch_df = build_dispatch(prices, power_mw, capacity_mwh, cycles)
-
+# ------------------------------------------------------------
+# KPI row
+# ------------------------------------------------------------
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Power (MW)", f"{power_mw:.1f}")
 c2.metric("Capacity (MWh)", f"{capacity_mwh:.1f}")
@@ -194,9 +309,5 @@ with row2_col2:
 st.subheader("Optimization Output")
 st.dataframe(dispatch_df, use_container_width=True)
 
-with st.expander("Show source dataframes"):
-    st.write("Historical actuals used for curve-fitting")
-    st.dataframe(historical_df, use_container_width=True)
-
-    st.write("Day-ahead forecast inputs")
-    st.dataframe(forecast_df, use_container_width=True)
+    st.subheader("Scatter dataframe")
+    st.dataframe(scatter_df, use_container_width=True)
