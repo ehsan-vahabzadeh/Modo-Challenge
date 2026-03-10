@@ -1,0 +1,4 @@
+{
+  "git.pullRebase": false,
+  "git.fetchOnPull": true
+}
