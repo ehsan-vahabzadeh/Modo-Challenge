@@ -13,10 +13,12 @@ from bmrs_data_wrapper import (
 st.set_page_config(page_title="Battery Dispatch Dashboard", page_icon="🔋", layout="wide")
 
 LOOKBACK_OPTIONS = [7, 14, 30, 60]
-POLY_DEGREE_OPTIONS = [1, 2, 3, 4]
+lookback_days = 30
+# POLY_DEGREE_OPTIONS = [1, 2, 3, 4]
+poly_degree = 3
 POWER_OPTIONS_MW = [0.5, 1.0, 2.0, 4.0]
 CAPACITY_OPTIONS_MWH = [0.5, 1.0, 2.0, 4.0, 8.0]
-CYCLE_OPTIONS = [0.5, 1.0, 2.0, 3.0]
+CYCLE_OPTIONS = [1, 2, 3]
 
 
 def fit_price_curve(df: pd.DataFrame, degree: int) -> tuple[np.ndarray, float]:
@@ -149,8 +151,8 @@ st.markdown(
 )
 
 st.sidebar.header("Model Inputs")
-lookback_days = st.sidebar.selectbox("Historic lookback window (days)", LOOKBACK_OPTIONS, index=2)
-poly_degree = st.sidebar.selectbox("Polynomial degree", POLY_DEGREE_OPTIONS, index=2)
+# lookback_days = st.sidebar.selectbox("Historic lookback window (days)", LOOKBACK_OPTIONS, index=2)
+# poly_degree = st.sidebar.selectbox("Polynomial degree", POLY_DEGREE_OPTIONS, index=2)
 power_mw = st.sidebar.selectbox("Battery power (MW)", POWER_OPTIONS_MW, index=1)
 capacity_mwh = st.sidebar.selectbox("Battery capacity (MWh)", CAPACITY_OPTIONS_MWH, index=2)
 cycles = st.sidebar.selectbox("Max cycles", CYCLE_OPTIONS, index=1)
