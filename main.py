@@ -89,14 +89,12 @@ def main_calculations():
 
     all_batteries = pd.DataFrame()
     for i_cycle in [1, 2]:
-        for i_mwh in [0.5, 1, 2, 4, 8]:
-            df = optimise_battery(prices=df_forecasts['curvefitted_price'].to_list(), power_mw=1.0, capacity_mwh=i_mwh, cycles=i_cycle)
+        for i_duration in [0.5, 1, 2, 4, 8]:
+            df = optimise_battery(prices=df_forecasts['curvefitted_price'].to_list(), power_mw=10, batt_duration=i_duration, cycles=i_cycle)
             df['cycle'] = i_cycle
-            df['mwh_capacity'] = i_mwh
+            df['duration'] = i_duration
             all_batteries = pd.concat([all_batteries, df], ignore_index=True)
-
-    df_actuals.to_csv('historic_actuals.csv')
-    all_batteries.to_csv('all_batteries.csv')
+ 
 
 if __name__ == "__main__":
     main_calculations()

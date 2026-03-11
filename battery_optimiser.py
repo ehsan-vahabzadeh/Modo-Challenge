@@ -2,7 +2,8 @@ import pulp
 import pandas as pd
 
 
-def optimise_battery(prices: list[float], power_mw: float, capacity_mwh: float, cycles: float) -> pd.DataFrame:
+
+def optimise_battery(prices: list[float], power_mw: float, batt_duration: float, cycles: float) -> pd.DataFrame:
     """Optimise a battery against half-hourly prices.
 
     Parameters
@@ -11,7 +12,7 @@ def optimise_battery(prices: list[float], power_mw: float, capacity_mwh: float, 
         Curvefitted price (£/MWh) for each settlement period.
     power_mw : float
         Charge / discharge power rating (MW).
-    capacity_mwh : float
+    batt_duration : float
         State of energy capacity (MWh).
     cycles : float
         Max number of full cycles. Total charge energy <= cycles * power_mw,
@@ -25,16 +26,17 @@ def optimise_battery(prices: list[float], power_mw: float, capacity_mwh: float, 
     N = len(prices)
     PERIOD_HOURS = 0.5
 
+    soe_max_mwh = batt_duration * power_mw
+    max_energy_throughput = soe_max_mwh * cycles
+
     model = pulp.LpProblem("battery_optimiser", pulp.LpMaximize)
 
     charge = [pulp.LpVariable(f"charge_{t}", 0, power_mw) for t in range(N)]
     discharge = [pulp.LpVariable(f"discharge_{t}", 0, power_mw) for t in range(N)]
-    soe = [pulp.LpVariable(f"soe_{t}", 0, capacity_mwh) for t in range(N)]
+    soe = [pulp.LpVariable(f"soe_{t}", 0, soe_max_mwh) for t in range(N)]
 
     # Maximise revenue: discharge sells at price, charge buys at price
-    model += pulp.lpSum(
-        (discharge[t] - charge[t]) * prices[t] * PERIOD_HOURS for t in range(N)
-    )
+    model += pulp.lpSum((discharge[t] - charge[t]) * prices[t] * PERIOD_HOURS for t in range(N))
 
     # State of energy constraints
     for t in range(N):
@@ -44,9 +46,8 @@ def optimise_battery(prices: list[float], power_mw: float, capacity_mwh: float, 
             model += soe[t] == soe[t - 1] + charge[t] * PERIOD_HOURS - discharge[t] * PERIOD_HOURS
 
     # Cycle constraints
-    max_energy = cycles * capacity_mwh
-    model += pulp.lpSum(charge[t] * PERIOD_HOURS for t in range(N)) <= max_energy
-    model += pulp.lpSum(discharge[t] * PERIOD_HOURS for t in range(N)) <= max_energy
+    model += pulp.lpSum(charge[t] * PERIOD_HOURS for t in range(N)) <= max_energy_throughput
+    model += pulp.lpSum(discharge[t] * PERIOD_HOURS for t in range(N)) <= max_energy_throughput
 
     model.solve(pulp.PULP_CBC_CMD(msg=0))
 

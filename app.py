@@ -16,8 +16,8 @@ LOOKBACK_OPTIONS = [7, 14, 30, 60]
 lookback_days = 30
 # POLY_DEGREE_OPTIONS = [1, 2, 3, 4]
 poly_degree = 3
-POWER_OPTIONS_MW = [0.5, 1.0, 2.0, 4.0]
-CAPACITY_OPTIONS_MWH = [0.5, 1.0, 2.0, 4.0, 8.0]
+POWER_OPTIONS_MW = [1,5,10,20]
+CAPACITY_OPTIONS_MWH = [1, 2, 4, 8]
 CYCLE_OPTIONS = [1, 2, 3, 5, 10]
 
 
@@ -47,11 +47,11 @@ def build_input_data(lookback_days: int, polynomial_degree: int):
     return historical, forecast, coeffs, r_squared
 
 
-def build_dispatch(prices: list[float], power_mw: float, capacity_mwh: float, cycles: float) -> pd.DataFrame:
+def build_dispatch(prices: list[float], power_mw: float, batt_duration: float, cycles: float) -> pd.DataFrame:
     dispatch = optimise_battery(
         prices=prices,
         power_mw=power_mw,
-        capacity_mwh=capacity_mwh,
+        batt_duration=batt_duration,
         cycles=cycles,
     )
     dispatch["cumulative_revenue"] = dispatch["revenue"].cumsum()

@@ -188,7 +188,20 @@ Yes: it incorporates demand/renewables balance, day-ahead views, settlement-peri
 
 ## 8) AI usage disclosure
 
-AI tools were used extensively to speed up implementation and iteration (including Codex, AmpCode, and ChatGPT). The final repository structure, assumptions, and modelling choices were curated and adapted for this specific task.
+AI tools were used extensively to speed up implementation and iteration (including Codex, AmpCode, and ChatGPT). For instance:
+I wanted to use piblicly available BMRS data as the source of my data. I used ampcode to write the datawrappers. An example of Amp thread that I used is as following:
+''
+
+This is a project in which I intend to build a basic battery with input parameters for the GB energy system.
+For this I will need to pull the data from BMRS. I need to pull the demand, wind, and solar generation data and the intraday prices.
+The base url for the bmrs website is bmrs.elexon.co.uk.
+Can you please write the code that pulls the wind, solar, and demand
+outturn data for a given date and wrap it up with a for loop that loops from the 90 days ago until today?
+Create a file called bmrs_data_wrapper.py and dump all this code in there.
+''
+This was an interative process with Ampcode, I continued building various blocks of the code via subsequent questions/threads. Most of the code was written by Amp but there were parts I had to manually intervene. For instance, when I pulled historic wind outturns, Amp mistakenly was dropping wind onshore and offshores, whereas it should have aggregated them to calculate the total every settlement period. 
+
+The final repository structure, assumptions, and modelling choices were curated and adapted for this specific task.
 
 ---
 
