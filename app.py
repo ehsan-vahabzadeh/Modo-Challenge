@@ -10,15 +10,15 @@ from bmrs_data_wrapper import (
     get_historic_actual_residual_load_and_day_ahead_prices,
 )
 
-st.set_page_config(page_title="Battery Dispatch Dashboard", page_icon="🔋", layout="wide")
+st.set_page_config(page_title="GB Intraday Battery Dispatch", page_icon="🔋", layout="wide")
 
 LOOKBACK_OPTIONS = [7, 14, 30, 60]
 lookback_days = 30
 # POLY_DEGREE_OPTIONS = [1, 2, 3, 4]
 poly_degree = 3
 POWER_OPTIONS_MW = [1,5,10,20]
-CAPACITY_OPTIONS_MWH = [1, 2, 4, 8]
-CYCLE_OPTIONS = [1, 2, 3, 5, 10]
+CAPACITY_OPTIONS_MWH = [0.5, 1, 2, 4]
+CYCLE_OPTIONS = [1, 2]
 
 
 def fit_price_curve(df: pd.DataFrame, degree: int) -> tuple[np.ndarray, float]:
@@ -116,7 +116,7 @@ def plot_price_residual_forecast(forecast_df: pd.DataFrame) -> go.Figure:
         name="Residual Load Forecast",
         secondary_y=True,
     )
-    fig.update_layout(title="Day-ahead Forecast Inputs", xaxis_title="Settlement Period", height=420)
+    fig.update_layout(title="Intraday Forecast Inputs", xaxis_title="Settlement Period", height=420)
     fig.update_yaxes(title_text="Price (£/MWh)", secondary_y=False)
     fig.update_yaxes(title_text="Residual Load (MW)", secondary_y=True)
     return fig
@@ -144,9 +144,10 @@ def plot_historic_scatter_with_fit(historical_df: pd.DataFrame, coeffs: np.ndarr
     return fig
 
 
-st.title("🔋 GB Battery Dispatch Dashboard")
+st.title("🔋 GB Intraday Battery Dispatch")
+_today_str = pd.Timestamp.today().normalize().strftime("%d %B %Y")
 st.markdown(
-    "Interactive view of BMRS-based curve-fitted prices and battery optimization. "
+    f"Evaluation of the daily profitability of the batteries in GB intraday market for **{_today_str}**. "
     "Choose **power (MW)**, **capacity (MWh)**, and **cycles** in the sidebar."
 )
 
@@ -154,11 +155,11 @@ st.sidebar.header("Model Inputs")
 # lookback_days = st.sidebar.selectbox("Historic lookback window (days)", LOOKBACK_OPTIONS, index=2)
 # poly_degree = st.sidebar.selectbox("Polynomial degree", POLY_DEGREE_OPTIONS, index=2)
 power_mw = st.sidebar.selectbox("Battery power (MW)", POWER_OPTIONS_MW, index=1)
-capacity_mwh = st.sidebar.selectbox("Battery capacity (MWh)", CAPACITY_OPTIONS_MWH, index=2)
+capacity_mwh = st.sidebar.selectbox("Battery capacity (Duration in Hours)", CAPACITY_OPTIONS_MWH, index=2)
 cycles = st.sidebar.selectbox("Max cycles", CYCLE_OPTIONS, index=1)
 
-if capacity_mwh < power_mw * 0.5:
-    st.sidebar.warning("Capacity is very small relative to power for 30-minute settlement periods.")
+# if capacity_mwh < power_mw * 0.5:
+#     st.sidebar.warning("Capacity is very small relative to power for 30-minute settlement periods.")
 
 try:
     historical_df, forecast_df, coeffs, r_squared = build_input_data(lookback_days, poly_degree)
@@ -177,7 +178,8 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("Power (MW)", f"{power_mw:.1f}")
 c2.metric("Capacity (MWh)", f"{capacity_mwh:.1f}")
 c3.metric("Cycles", f"{cycles:.1f}")
-c4.metric("Optimized Revenue (£)", f"{dispatch_df['revenue'].sum():,.0f}")
+c4.metric("Profit (£)", f"{dispatch_df['revenue'].sum():,.0f}")
+c4.metric("Normalized Profit (£/MW)", f"{dispatch_df['revenue'].sum() / power_mw:.0f}")
 
 row1_col1, row1_col2 = st.columns(2)
 with row1_col1:
@@ -188,6 +190,12 @@ with row1_col2:
 row2_col1, row2_col2 = st.columns(2)
 with row2_col1:
     st.plotly_chart(plot_historic_scatter_with_fit(historical_df, coeffs, r_squared), use_container_width=True)
+    _hist_start = pd.to_datetime(historical_df["settlement_date"]).min().strftime("%d %B %Y")
+    _hist_end = pd.to_datetime(historical_df["settlement_date"]).max().strftime("%d %B %Y")
+    st.caption(
+        f"Fundamental data (demand, solar, and wind outturns) and intraday prices "
+        f"collected for the previous 30 days from {_hist_start} to {_hist_end} from BMRS."
+    )
 with row2_col2:
     st.plotly_chart(plot_price_residual_forecast(forecast_df), use_container_width=True)
 
@@ -198,5 +206,5 @@ with st.expander("Show source dataframes"):
     st.write("Historical actuals used for curve-fitting")
     st.dataframe(historical_df, use_container_width=True)
 
-    st.write("Day-ahead forecast inputs")
+    st.write("Intraday forecast inputs")
     st.dataframe(forecast_df, use_container_width=True)

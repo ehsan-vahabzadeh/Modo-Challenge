@@ -1,105 +1,22 @@
 # GB Battery Dispatch Prototype (Modo Take-Home)
 
+![Dashboard screenshot](Dashboard.png)
+
 A Python-based prototype that answers a practical market question:
 
-> **Given GB demand, wind, and solar conditions, when should a battery charge/discharge to maximise day-ahead arbitrage revenue under power, capacity, and cycle constraints?**
+> **Given GB demand, wind, and solar conditions, when should a battery charge/discharge to maximise intraday arbitrage revenue under power, capacity, and cycle constraints?**
 
 This repository demonstrates a complete (but intentionally simplified) workflow:
 
 1. Pull historic GB fundamentals and prices from BMRS.
 2. Build a simple statistical relationship between residual load and price.
-3. Use day-ahead fundamentals to estimate next-day prices.
+3. Use intraday fundamentals to estimate prices.
 4. Optimise battery dispatch against those estimated prices.
 5. Explore scenarios interactively in a Streamlit dashboard.
 
 ---
 
-## 1) Problem statement and scope
-
-### The question we chose
-
-Electricity prices are strongly influenced by the supply-demand balance. Wind and solar are low-marginal-cost but intermittent, so residual demand (demand minus renewables) can drive pricing pressure. We use that idea to ask:
-
-- How does historic **residual load** relate to **market index price**?
-- If we forecast residual load for tomorrow, what price shape does that imply?
-- For a battery with chosen technical limits, what dispatch schedule maximises revenue?
-
-### Why this is a good fit for the brief
-
-The take-home is open-ended and asks for a tangible, scoped, market-relevant tool. This project is:
-
-- **Market-relevant**: directly tied to storage trading/dispatch decisions.
-- **Tangible**: delivers an interactive dashboard and optimisation outputs.
-- **Scoped**: intentionally simple assumptions to fit the timebox.
-- **Python-first**: aligns with the role's emphasis on Python modelling.
-
----
-
-## 2) What the model does (end-to-end)
-
-### Data (BMRS / Elexon)
-
-The code pulls:
-
-- Historic demand outturn
-- Historic wind and solar outturn
-- Historic market index prices
-- Day-ahead wind+solar forecast
-- Day-ahead demand forecast
-
-These are fetched in `bmrs_data_wrapper.py` and merged by settlement period.
-
-### Feature engineering
-
-For each settlement period:
-
-- `residual_load_MW = demand_MW - wind_MW - solar_MW`
-
-### Price-shape model (simplified)
-
-Using a lookback window (default 30 days), the project fits a polynomial:
-
-- `market_index_price ~ f(residual_load_MW)`
-
-Then day-ahead residual load forecasts are mapped through the fitted curve to create:
-
-- `curvefitted_price` (proxy day-ahead price signal)
-
-### Battery optimisation
-
-`battery_optimiser.py` solves a linear optimisation problem that maximises arbitrage revenue over half-hourly periods with constraints on:
-
-- Power limit (MW)
-- Energy capacity (MWh)
-- Total cycle throughput
-- State-of-energy dynamics and bounds
-
-### Dashboard workflow
-
-`app.py` lets the user choose scenario inputs (power, capacity, cycles) and visualises:
-
-- Charge/discharge plan
-- State of energy trajectory
-- Historic price vs residual-load fit
-- Day-ahead residual-load and curve-fitted price
-
----
-
-## 3) Key simplifying assumptions
-
-This is a prototype for rapid insight, not a production trading model. Important simplifications include:
-
-1. Price is modelled as a univariate function of residual load.
-2. Polynomial fit is static over the chosen lookback period.
-3. Perfect foresight on the day-ahead residual-load forecast used by the optimiser.
-4. No explicit battery degradation cost, efficiency losses, or bid/offer spreads.
-5. No imbalance risk, constraint/basis risk, or market liquidity impacts.
-
-These assumptions are deliberate to keep the model interpretable and implementable within a short take-home timeframe.
-
----
-
-## 4) Repository structure
+## 1) Repository structure
 
 - `app.py` — Streamlit dashboard and interactive scenario controls.
 - `bmrs_data_wrapper.py` — BMRS data access + residual load calculations.
@@ -111,7 +28,7 @@ These assumptions are deliberate to keep the model interpretable and implementab
 
 ---
 
-## 5) How to run locally
+## 2) How to run locally
 
 ### Prerequisites
 
@@ -142,102 +59,59 @@ python -m streamlit run app.py
 
 ---
 
-## 6) How to interpret outputs
+## 3) AI usage disclosure
 
-### Charge/discharge plan
+AI tools were used extensively to accelerate implementation and iteration, including Codex, AmpCode, and ChatGPT. The publicly available BMRS API was chosen as the primary data source, and AmpCode was used to write the data wrappers.
 
-- Positive discharge periods indicate selling energy.
-- Charge periods indicate buying energy.
-- Pattern reflects the optimiser's response to forecasted price shape and constraints.
+Example of prompt given to AmpCode:
 
-### SOE plot
+> *This is a project in which I intend to build a basic battery with input parameters for the GB energy system.
+> For this I will need to pull the data from BMRS. I need to pull the demand, wind, and solar generation data and the intraday prices.
+> The base URL for the BMRS website is bmrs.elexon.co.uk.
+> Can you please write the code that pulls the wind, solar, and demand
+> outturn data for a given date and wrap it up with a for loop that loops from 90 days ago until today?
+> Create a file called `bmrs_data_wrapper.py` and dump all this code in there.*
 
-- Shows if the schedule respects battery limits.
-- Helps diagnose whether capacity or cycle limits are binding.
+The final repository structure, assumptions, and modelling choices were curated and adapted by hand for this specific task.
 
-### Historic fit chart
+### Shortcomings of AI
 
-- Visual check of whether residual load explains historic price variation.
-- R² is directional, not a guarantee of predictive quality.
-
-### Forecast chart
-
-- Shows the residual-load forecast and implied curve-fitted price shape.
-- This is the immediate input to optimisation decisions.
+This was an iterative process with AmpCode — I continued building various blocks of the code via subsequent questions and threads. Most of the code was written by Amp, but there were parts where I had to intervene manually. For instance, when pulling historic wind outturns, Amp mistakenly dropped onshore and offshore wind separately, whereas it should have aggregated them to calculate total wind generation for every settlement period.
 
 ---
 
-## 7) Evaluation checklist (explicitly addressed)
+## 4) Evaluation checklist
 
-### Why did you pick this problem?
-Because battery dispatch under variable renewables is a core commercial problem in modern power markets and can be scoped meaningfully in a short project.
+### A clear point of view — why did you pick this, what were you trying to find out?
 
-### What were you trying to find out?
-Whether a lightweight residual-load-to-price model can produce useful day-ahead price signals for constrained battery scheduling.
+Battery dispatch under variable renewables is one of the core commercial problems in modern power markets. As intermittent generation from wind and solar grows, the value of flexible storage increasingly depends on the ability to anticipate price movements driven by the supply–demand balance. This project asks whether a lightweight, fundamentals-driven price model can produce actionable dispatch signals — and whether that workflow can be scoped, built, and demonstrated end-to-end within a few hours.
 
-### Did you make smart scoping choices?
-Yes: used public BMRS data, a transparent polynomial model, and LP optimisation to deliver an end-to-end prototype quickly.
+### Sensible scoping — did you make smart choices about what to build in the time available?
 
-### Is the output defensible and clearly communicated?
-The model is intentionally simple and the README/dashboard state assumptions, data flow, and limitations clearly.
+Yes. The project deliberately constrains itself to publicly available BMRS data, a transparent polynomial curve fit (residual load → price), and a standard LP optimisation for battery scheduling. Each component is simple enough to build, test, and present quickly, while still forming a coherent pipeline from raw market data to an interactive dispatch dashboard. Features that would add complexity without proportional insight — such as multi-market co-optimisation, degradation modelling, or probabilistic forecasting — were intentionally deferred.
 
-### Does it reflect energy-market awareness?
-Yes: it incorporates demand/renewables balance, day-ahead views, settlement-period dispatch, and operational battery constraints.
+### Quality of thinking — is the analysis or output defensible and clearly communicated?
 
----
+The model is intentionally simple, and every simplification is stated explicitly (see Section 5). The dashboard makes assumptions, data flow, and outputs visible so a reviewer can trace each step from input data to dispatch schedule. The polynomial fit is not presented as a production forecasting tool — it is a directional proxy that demonstrates how fundamentals-based price estimation feeds into constrained optimisation.
 
-## 8) AI usage disclosure
+### Energy market awareness — does it reflect an understanding of how these markets actually work?
 
-AI tools were used extensively to speed up implementation and iteration (including Codex, AmpCode, and ChatGPT). For instance:
-I wanted to use piblicly available BMRS data as the source of my data. I used ampcode to write the datawrappers. An example of Amp thread that I used is as following:
-''
+Yes. The prototype incorporates key real-world concepts: the demand/renewables balance as a driver of price, half-hourly settlement-period granularity, and operational battery constraints (power limits, energy capacity, cycle throughput). It acknowledges — through its stated assumptions — the gap between this simplified model and real trading decisions, including multi-market participation, imbalance exposure, efficiency losses, and bid/offer spread risk.
 
-This is a project in which I intend to build a basic battery with input parameters for the GB energy system.
-For this I will need to pull the data from BMRS. I need to pull the demand, wind, and solar generation data and the intraday prices.
-The base url for the bmrs website is bmrs.elexon.co.uk.
-Can you please write the code that pulls the wind, solar, and demand
-outturn data for a given date and wrap it up with a for loop that loops from the 90 days ago until today?
-Create a file called bmrs_data_wrapper.py and dump all this code in there.
-''
-This was an interative process with Ampcode, I continued building various blocks of the code via subsequent questions/threads. Most of the code was written by Amp but there were parts I had to manually intervene. For instance, when I pulled historic wind outturns, Amp mistakenly was dropping wind onshore and offshores, whereas it should have aggregated them to calculate the total every settlement period. 
+### Use of AI
 
-The final repository structure, assumptions, and modelling choices were curated and adapted for this specific task.
+Use of AI is not just allowed — it's expected. AI tools (AmpCode, Codex, ChatGPT) were used throughout to move faster, iterate on code, and build a complete prototype that would have taken significantly longer to deliver without them. The AI usage disclosure in Section 3 details the workflow, including an example prompt and where manual intervention was required.
 
 ---
 
-## 9) Dashboard screenshot
+## 5) Key simplifying assumptions
 
-Dashboard preview:
+This is a prototype for rapid insight, not a production trading model. Important simplifications include:
 
-![Dashboard screenshot](Dashboard.png)
+1. Price is modelled as a univariate function of residual load.
+2. Polynomial fit is static over the chosen lookback period.
+3. We assume a single intraday market, where in reality the optimisation decision is complex across multiple markets.
+4. No explicit battery degradation cost, efficiency losses, or bid/offer spreads.
+5. No imbalance risk, constraint/basis risk, or market liquidity impacts.
 
-> If `docs/dashboard.png` is missing, launch the app locally and save a screenshot at that path.
-
----
-
-## 10) Git pull / merge fix (VS Code)
-
-If you see:
-
-```text
-fatal: Need to specify how to reconcile divergent branches.
-```
-
-Set a repo-level default strategy once:
-
-```bash
-git config pull.rebase false
-git config pull.ff false
-```
-
-Then pull with:
-
-```bash
-git pull --no-rebase
-```
-
-Helper script:
-
-```bash
-./scripts/setup_git_pull_strategy.sh
-```
+These assumptions are deliberate to keep the model interpretable and implementable within a short take-home timeframe.
