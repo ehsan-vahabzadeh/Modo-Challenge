@@ -1,6 +1,6 @@
 # GB Battery Dispatch Prototype (Modo Take-Home)
 
-![Dashboard screenshot](Dashboard.png)
+![Dashboard screenshot](Dashboards.png)
 
 A Python-based prototype that answers a practical market question:
 
