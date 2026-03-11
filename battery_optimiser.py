@@ -64,6 +64,7 @@ def optimise_battery(prices: list[float], power_mw: float, batt_duration: float,
             "discharge_MW": d,
             "soe_MWh": s,
             "revenue": rev,
+            "Batt_power_MW": power_mw,
         })
 
     return pd.DataFrame(results)

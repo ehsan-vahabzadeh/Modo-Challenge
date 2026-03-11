@@ -11,6 +11,17 @@ from bmrs_data_wrapper import (
 )
 
 st.set_page_config(page_title="GB Intraday Battery Dispatch", page_icon="🔋", layout="wide")
+st.markdown(
+    """
+    <style>
+    .app-intro {
+        color: #000000 !important;
+        font-size: 1.2em;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 LOOKBACK_OPTIONS = [7, 14, 30, 60]
 lookback_days = 30
@@ -90,7 +101,7 @@ def plot_soe(dispatch_df: pd.DataFrame, capacity_mwh: float) -> go.Figure:
         mode="lines+markers",
         name="SOE",
     )
-    fig.add_hline(y=capacity_mwh, line_dash="dash", annotation_text="Capacity")
+    fig.add_hline(y=capacity_mwh * dispatch_df["Batt_power_MW"][0], line_dash="dash", annotation_text="Capacity")
     fig.update_layout(
         title="State of Energy",
         xaxis_title="Settlement Period",
@@ -106,7 +117,7 @@ def plot_price_residual_forecast(forecast_df: pd.DataFrame) -> go.Figure:
         x=forecast_df["settlement_period"],
         y=forecast_df["curvefitted_price"],
         mode="lines+markers",
-        name="Curvefitted Price",
+        name="Curvefitted Forecasted Price",
         secondary_y=False,
     )
     fig.add_scatter(
@@ -119,6 +130,7 @@ def plot_price_residual_forecast(forecast_df: pd.DataFrame) -> go.Figure:
     fig.update_layout(title="Intraday Forecast Inputs", xaxis_title="Settlement Period", height=420)
     fig.update_yaxes(title_text="Price (£/MWh)", secondary_y=False)
     fig.update_yaxes(title_text="Residual Load (MW)", secondary_y=True)
+    
     return fig
 
 
@@ -136,10 +148,22 @@ def plot_historic_scatter_with_fit(historical_df: pd.DataFrame, coeffs: np.ndarr
     fig.add_scatter(x=x, y=y, mode="markers", name="Historical points", marker=dict(size=5, opacity=0.4))
     fig.add_scatter(x=x_line, y=y_line, mode="lines", name="Polynomial fit", line=dict(width=3))
     fig.update_layout(
-        title=f"Historical Price vs Residual Load (R² = {r_squared:.3f})",
+        title=f"Historical Price vs Residual Load",
         xaxis_title="Residual Load (MW)",
         yaxis_title="Market Index Price (£/MWh)",
         height=420,
+    )
+    fig.add_annotation(
+        text=f"R² = {r_squared:.3f}",
+        xref="paper", yref="paper",
+        x=0.02, y=0.98,
+        xanchor="left",
+        yanchor="top",
+        showarrow=False,
+        font=dict(size=16),
+        bgcolor="rgba(255,255,255,0.9)",
+        bordercolor="black",
+        borderwidth=1
     )
     return fig
 
@@ -147,8 +171,9 @@ def plot_historic_scatter_with_fit(historical_df: pd.DataFrame, coeffs: np.ndarr
 st.title("🔋 GB Intraday Battery Dispatch")
 _today_str = pd.Timestamp.today().normalize().strftime("%d %B %Y")
 st.markdown(
-    f"Evaluation of the daily profitability of the batteries in GB intraday market for **{_today_str}**. "
-    "Choose **power (MW)**, **capacity (MWh)**, and **cycles** in the sidebar."
+    f"<p class='app-intro'>Evaluation of the daily profitability of the batteries in GB intraday market for <b>{_today_str}</b>. "
+     "Choose <b>power (MW)</b>, <b>capacity (hr)</b>, and <b>cycles</b> in the sidebar.</p>",
+    unsafe_allow_html=True,
 )
 
 st.sidebar.header("Model Inputs")
@@ -175,11 +200,24 @@ prices = forecast_df["curvefitted_price"].astype(float).tolist()
 dispatch_df = build_dispatch(prices, power_mw, capacity_mwh, cycles)
 
 c1, c2, c3, c4 = st.columns(4)
+_charge_mask = dispatch_df["charge_MW"] > 0
+_discharge_mask = dispatch_df["discharge_MW"] > 0
+_charged_price = (
+    (dispatch_df.loc[_charge_mask, "price"] * dispatch_df.loc[_charge_mask, "charge_MW"]).sum()
+    / dispatch_df.loc[_charge_mask, "charge_MW"].sum()
+) if _charge_mask.any() else 0.0
+_discharged_price = (
+    (dispatch_df.loc[_discharge_mask, "price"] * dispatch_df.loc[_discharge_mask, "discharge_MW"]).sum()
+    / dispatch_df.loc[_discharge_mask, "discharge_MW"].sum()
+) if _discharge_mask.any() else 0.0
+_captured_spread = _discharged_price - _charged_price
+
 c1.metric("Power (MW)", f"{power_mw:.1f}")
-c2.metric("Capacity (MWh)", f"{capacity_mwh:.1f}")
-c3.metric("Cycles", f"{cycles:.1f}")
-c4.metric("Profit (£)", f"{dispatch_df['revenue'].sum():,.0f}")
-c4.metric("Normalized Profit (£/MW)", f"{dispatch_df['revenue'].sum() / power_mw:.0f}")
+# c2.metric("Capacity (MWh)", f"{capacity_mwh:.1f}")
+# c2.metric("Cycles", f"{cycles:.1f}")
+c2.metric("Profit (£)", f"{dispatch_df['revenue'].sum():,.0f}")
+c3.metric("Normalized Profit (£/MW)", f"{dispatch_df['revenue'].sum() / power_mw:.0f}")
+c4.metric("Captured Price Spread (£/MWh)", f"{_captured_spread:.1f}")
 
 row1_col1, row1_col2 = st.columns(2)
 with row1_col1:
